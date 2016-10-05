@@ -1,8 +1,6 @@
 ﻿using Microsoft.Xrm.Sdk;
 using System;
-using System.Net;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Threading.Tasks;
@@ -13,93 +11,65 @@ namespace MorningGirl.CrmPluginAzureAdConnect
     {
         public void Execute(IServiceProvider serviceProvider)
         {
-            try
-            {
-                var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            
+            var clientId = "";
+            var userName = "";
+            var password = "";
+            var resourceUrl = "";
 
-                var entity = context.InputParameters["Target"] as Entity;
+            var azureAdConnect = new AzureAdConnect(
+                clientId,
+                userName,
+                password,
+                resourceUrl
+                );
 
-                var createFolderName = entity["name"];
-                var clientId = "";
-                var userName = "";
-                var password = "";
-                var sharePointUrl = "";
-                var targetDocumentFolder = "";
+            var token = azureAdConnect.GetAccessToken();
 
-                var azureAdConnect = new AzureAdConnect(
-                    clientId,
-                    userName,
-                    password,
-                    sharePointUrl
-                    );
+            token.Wait();
 
-                var token = azureAdConnect.GetAccessToken();
-
-                token.Wait();
-
-                using (var httpClient = new HttpClient())
-                {
-
-                    httpClient.DefaultRequestHeaders.Add("Accept", "application/json; odata=verbose");
-                    httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Result.access_token);
-
-                    var createReq = new HttpRequestMessage(HttpMethod.Post, sharePointUrl + "_api/web/folders");
-
-                    // JSONコンバート
-                    createReq.Content = new StringContent("{ '__metadata': { 'type': 'SP.Folder' }, 'ServerRelativeUrl': '/" + targetDocumentFolder + "/" + createFolderName + "'}");
-
-                    createReq.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json;odata=verbose");
-
-                    var result = httpClient.SendAsync(createReq);
-                    result.Wait();
-
-                    Console.WriteLine(result.Result.IsSuccessStatusCode);
-
-                }
-            }
-            catch(Exception ex)
-            {
-                throw new InvalidPluginExecutionException(ex.Message);
-            }
+            throw new InvalidPluginExecutionException(token.Result.access_token);
+             
         }
     }
 
     /// <summary>
-    /// 
+    /// AzureADからTokenを取得するためのClass
     /// </summary>
     public class AzureAdConnect
     {
         private string _clientId { get; set; }
         private string _userName { get; set; }
         private string _password { get; set; }
-        private string _resourceId { get; set; }
+        private string _recourceUrl { get; set; }
 
         /// <summary>
-        /// 
+        /// コンストラクタ
         /// </summary>
-        public AzureAdConnect(string clientId, string userName,string password, string recourceId)
+        public AzureAdConnect(string clientId, string userName,string password, string recourceUrl)
         {
             _clientId = clientId;
             _userName = userName;
             _password = password;
-            _resourceId = recourceId;
+            _recourceUrl = recourceUrl;
         }
 
         /// <summary>
-        /// 
+        /// grant_type=passwordでTokenを取得
         /// </summary>
         /// <returns></returns>
         public async Task<AzureAccessToken> GetAccessToken()
         {
-
             var token = new AzureAccessToken();
 
             string oauthUrl = string.Format("https://login.windows.net/common/oauth2/token");
+            
             string reqBody = string.Format("grant_type=password&client_id={0}&username={1}&password={2}&resource={3}&scope=openid",
                 Uri.EscapeDataString(_clientId),
                 Uri.EscapeDataString(_userName),
                 Uri.EscapeDataString(_password),
-                Uri.EscapeDataString(this._resourceId));
+                Uri.EscapeDataString(this._recourceUrl));
 
             var client = new HttpClient();
             var content = new StringContent(reqBody);
@@ -119,7 +89,7 @@ namespace MorningGirl.CrmPluginAzureAdConnect
     }
 
     /// <summary>
-    /// ACCESStoken格納クラス
+    /// AccessToken等の格納クラス
     /// </summary>
     [DataContract]
     public class AzureAccessToken
